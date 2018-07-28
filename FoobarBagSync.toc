@@ -2,7 +2,7 @@
 ## Title: FoobarBagSync
 ## Notes: A debugging tool for BagSync.  Used to test custom user databases for errors.
 ## Author: Xruptor
-## Version: 1.0
+## Version: 1.1
 ## OptionalDeps: tekDebug
 
 libs\LibStub\LibStub.lua
