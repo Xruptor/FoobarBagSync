@@ -24,6 +24,7 @@ FBS.showGuildNames = true
 FBS.showTotal = true
 FBS.enableUnitClass = true
 FBS.enableTooltipItemID = true
+FBS.enableNoItemExclusion = true
 
 local FBSL = {}
 FBSL.TooltipBag = "Bags:"
@@ -77,34 +78,56 @@ local function tooltipColor(color, str)
 	return string.format("|cff%02x%02x%02x%s|r", (color.r or 1) * 255, (color.g or 1) * 255, (color.b or 1) * 255, tostring(str))
 end
 
-function ParseItemLink(link, count)
-	if link then
-		local id = tonumber(link:match('item:(%d+):')) -- check for profession window bug
-		if id == 0 and TradeSkillFrame then
-			local focus = GetMouseFocus():GetName()
-
-			if focus == 'TradeSkillSkillIcon' then 
-				link = GetTradeSkillItemLink(TradeSkillFrame.selectedSkill)
-			else
-				local i = focus:match('TradeSkillReagent(%d+)')
-				if i then
-					link = GetTradeSkillReagentItemLink(TradeSkillFrame.selectedSkill, tonumber(i))
+local function ParseItemLink(link)
+	if not link then return nil end
+	if tonumber(link) then return link end
+	local result = link:match("item:([%d:]+)") --strip the item: portion of the string
+	
+	if result then
+		result = gsub(result, ":0:", "::") --supposedly blizzard removed all the zero's in patch 7.0. Lets do it just in case!
+		--split everything into a table so we can count up to the bonusID portion
+		local countSplit = {strsplit(":", result)}
+		
+		--make sure we have a bonusID count
+		if countSplit and #countSplit > 13 then
+			local count = countSplit[13] or 0 -- do we have a bonusID number count?
+			count = count == "" and 0 or count --make sure we have a count if not default to zero
+			count = tonumber(count)
+			
+			--check if we have even anything to work with for the amount of bonusID's
+			--btw any numbers after the bonus ID are either upgradeValue which we don't care about or unknown use right now
+			--http://wow.gamepedia.com/ItemString
+			if count > 0 and countSplit[1] then
+				--return the string with just the bonusID's in it
+				local newItemStr = ""
+				
+				--11th place because 13 is bonus ID, one less from 13 (12) would be technically correct, but we have to compensate for ItemID we added in front so substract another one (11).
+				--string.rep repeats a pattern.
+				newItemStr = countSplit[1]..string.rep(":", 11)
+				
+				--lets add the bonusID's, ignore the end past bonusID's
+				for i=13, (13 + count) do
+					--check for certain bonus ID's
+					if i == 14 and tonumber(countSplit[i]) == 3407 then
+						--the tradeskill window returns a 1:3407 for bonusID on regeant info and craft item in C_TradeSkillUI, ignore it
+						return result:match("^(%d+):")
+					end
+					newItemStr = newItemStr..":"..countSplit[i]
 				end
+				
+				--add the unknowns at the end, upgradeValue doesn't always have to be supplied.
+				newItemStr = newItemStr..":::"
+
+				return newItemStr
 			end
 		end
-
-		if link:find('0:0:0:0:0:%d+:%d+:%d+:0:0') then
-			link = link:match('|H%l+:(%d+)')
-		else
-			link = link:match('|H%l+:([%d:]+)')
-		end
 		
-		if count and count > 1 then
-			link = link .. ';' .. count
-		end
-
-		return link
+		--we don't have any bonusID's that we care about, so return just the ItemID which is the first number
+		return result:match("^(%d+):")
 	end
+	
+	--nothing to return so return nil
+	return nil
 end
 
 local function ToShortItemID(link)
@@ -351,10 +374,13 @@ function FBS:AddItemToTooltip(frame, link) --workaround
 		frame:Show()
 		return
 	end
-	
+
 	--use our stripped itemlink, not the full link
 	local shortItemID = ToShortItemID(itemLink)
 
+	--short the shortID and ignore all BonusID's and stats
+	if FBS.enableNoItemExclusion then itemLink = shortItemID end
+	
 	--only show tooltips in search frame if the option is enabled
 	if FBS.tooltipOnlySearch and frame:GetOwner() and frame:GetOwner():GetName() and string.sub(frame:GetOwner():GetName(), 1, 16) ~= "FoobarBagSyncSearchRow" then
 		frame:Show()
@@ -445,7 +471,8 @@ function FBS:AddItemToTooltip(frame, link) --workaround
 						if type(bagInfo) == "table" then
 							for slotID, itemValue in pairs(bagInfo) do
 								local dblink, dbcount = strsplit(",", itemValue)
-								if dblink and dblink == itemLink or (ToShortItemID(dblink) == shortItemID) then
+								if dblink and FBS.enableNoItemExclusion then dblink = ToShortItemID(dblink) end
+								if dblink and dblink == itemLink then
 									allowList[q] = allowList[q] + (dbcount or 1)
 									grandTotal = grandTotal + (dbcount or 1)
 								end
@@ -479,7 +506,8 @@ function FBS:AddItemToTooltip(frame, link) --workaround
 						local tmpCount = 0
 						for q, r in pairs(xDBGuild[v.realm][guildN]) do
 							local dblink, dbcount = strsplit(",", r)
-							if dblink and dblink == itemLink or (ToShortItemID(dblink) == shortItemID) then
+							if dblink and FBS.enableNoItemExclusion then dblink = ToShortItemID(dblink) end
+							if dblink and dblink == itemLink then
 								--if we have show guild names then don't show any guild info for the character, otherwise it gets repeated twice
 								if not FBS.showGuildNames then
 									allowList["guild"] = allowList["guild"] + (dbcount or 1)
