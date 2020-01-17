@@ -1,8 +1,8 @@
-## Interface: 80000
+## Interface: 80300
 ## Title: FoobarBagSync
 ## Notes: A debugging tool for BagSync.  Used to test custom user databases for errors.
 ## Author: Xruptor
-## Version: 1.1
+## Version: 1.2
 ## OptionalDeps: tekDebug
 
 libs\LibStub\LibStub.lua
